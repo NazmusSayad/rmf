@@ -1,10 +1,8 @@
-# PRD — rmf (MVP)
+# PRD — rmf
 
 ## 1. Objective
 
 Build a Rust CLI tool that deletes large directory trees faster than typical single-threaded deletion in developer workflows, while remaining safe by default.
-
-MVP focuses on high-performance recursive deletion on Linux, macOS, and Windows.
 
 ---
 
@@ -20,13 +18,13 @@ Non-goal: replacing system `rm` for all use cases.
 
 ---
 
-## 3. Functional Requirements (MVP)
+## 3. Functional Requirements
 
 ### 3.1 Recursive Deletion
 
-- Accept a single target path.
+- Accept a single or multiple target paths.
 - Recursively delete all contents.
-- Do not follow symlinks (delete the link only).
+- Delete symlinks only (the link, not the target).
 - Delete files before directories (bottom-up).
 
 ### 3.2 Parallel Deletion
@@ -47,7 +45,7 @@ Non-goal: replacing system `rm` for all use cases.
 Usage:
 
 ```
-rmf <target>
+rmf <target1> <target2> ...
 ```
 
 Flags:
@@ -57,8 +55,6 @@ Flags:
 - `--quiet` → suppress non-error output.
 - `--trash` → move to system trash (macOS/Linux) or recycle bin (Windows) instead of permanent delete; disabled by default.
 - Progress bar: show deletion progress by default; `--quiet` suppresses it.
-
-Only one target path supported in MVP.
 
 ---
 
@@ -89,7 +85,7 @@ Exit codes:
 - Use streaming directory traversal (e.g., iterator-based walk).
 - Cross-platform: Linux, macOS, and Windows.
 
-Deletion algorithm (MVP):
+Deletion algorithm:
 
 1. Traverse directory tree.
 2. Dispatch file deletions to thread pool.
