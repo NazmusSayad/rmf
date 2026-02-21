@@ -38,7 +38,6 @@ Non-goal: replacing system `rm` for all use cases.
 
 - Refuse to delete `/`.
 - Refuse to delete user home directory unless `--force`.
-- Require confirmation prompt unless `--force`.
 
 ### 3.4 CLI Contract
 
@@ -50,7 +49,7 @@ rmf <target1> <target2> ...
 
 Flags:
 
-- `--force` → skip confirmation.
+- `--force` → allow deletion of protected paths (e.g. home directory).
 - `--threads <n>` → override worker count.
 - `--quiet` → suppress non-error output.
 - `--trash` → move to system trash (macOS/Linux) or recycle bin (Windows) instead of permanent delete; disabled by default.

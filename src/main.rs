@@ -215,7 +215,7 @@ fn delete_fast(target: &Path, num_threads: usize, quiet: bool) -> i32 {
         let files = stats.files_deleted.load(Ordering::Relaxed);
         let dirs = stats.dirs_deleted.load(Ordering::Relaxed);
         eprintln!(
-            "Deleted {} files, {} directories ({} failures)",
+            "{} files deleted, {} directories ({} failures)",
             files, dirs, failures
         );
     }
@@ -358,6 +358,25 @@ fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, fo
             target.display(),
             threads
         );
+    }
+
+    let metadata = match fs::symlink_metadata(target) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Error reading metadata: {}", e);
+            return EXIT_FATAL;
+        }
+    };
+
+    if metadata.is_file() || metadata.is_symlink() {
+        if let Err(e) = fs::remove_file(target) {
+            eprintln!("Error deleting file: {}", e);
+            return EXIT_PARTIAL_FAILURE;
+        }
+        if !quiet {
+            eprintln!("1 files deleted, 0 directories (0 failures)");
+        }
+        return EXIT_SUCCESS;
     }
 
     delete_fast(target, threads, quiet)
