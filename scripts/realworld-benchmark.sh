@@ -8,39 +8,59 @@ echo "CPUs: $(nproc)"
 echo "Memory: $(free -h | grep Mem | awk '{print $2}')"
 echo ""
 
-run_npm_benchmark() {
+PROJECTS=(
+	"webpack/webpack"
+	"facebook/react"
+	"metabase/metabase"
+	"babel/babel"
+	"quran/quran.com-frontend-next"
+)
+
+run_project_benchmark() {
+	local project=$1
+	local project_name=$(basename $project)
+	local work_dir="/test/realworld/${project_name}"
+
 	echo ""
 	echo "=========================================="
-	echo "Real-World: node_modules (20+ packages)"
+	echo "Project: $project_name"
 	echo "=========================================="
 	echo ""
 
 	mkdir -p /test/realworld
-	cd /test/realworld
-	npm init -y --silent --force
+	rm -rf "$work_dir"
 
-	echo "Installing packages: express lodash typescript react webpack next vue axios prettier eslint jest mocha chai redux lodash-es ramda immutable moment date-fns underscore jquery aws-sdk firebase @tensorflow/tfjs monaco-editor antd react-icons"
-	npm install express lodash typescript react webpack next vue axios prettier eslint jest mocha chai redux lodash-es ramda immutable moment date-fns underscore jquery aws-sdk firebase @tensorflow/tfjs monaco-editor antd react-icons --silent --force
+	echo "Cloning $project..."
+	git clone --depth 1 "https://github.com/${project}.git" "$work_dir"
+	cd "$work_dir"
 
-	local file_count=$(find node_modules -type f | wc -l)
-	local dir_count=$(find node_modules -type d | wc -l)
+	echo "Installing dependencies..."
+	npm install --silent --force 2>/dev/null || npm install --silent 2>/dev/null || npm install 2>/dev/null
+
+	local file_count=$(find node_modules -type f 2>/dev/null | wc -l)
+	local dir_count=$(find node_modules -type d 2>/dev/null | wc -l)
 	echo "Installed: $file_count files in $dir_count directories"
 	echo ""
 
 	echo "--- rmf ---"
-	/usr/bin/time -v rmf --quiet /test/realworld/node_modules 2>&1 | grep -E "(Elapsed|Maximum resident)"
+	/usr/bin/time -v rmf --quiet "$work_dir/node_modules" 2>&1 | grep -E "(Elapsed|Maximum resident)"
 
-	npm install express lodash typescript react webpack next vue axios prettier eslint jest mocha chai redux lodash-es ramda immutable moment date-fns underscore jquery aws-sdk firebase @tensorflow/tfjs monaco-editor antd react-icons --silent --force
+	echo "Reinstalling dependencies..."
+	npm install --silent --force 2>/dev/null || npm install --silent 2>/dev/null || npm install 2>/dev/null
 
 	echo ""
 	echo "--- rm -rf ---"
-	/usr/bin/time -v rm -rf /test/realworld/node_modules 2>&1 | grep -E "(Elapsed|Maximum resident)"
+	/usr/bin/time -v rm -rf "$work_dir/node_modules" 2>&1 | grep -E "(Elapsed|Maximum resident)"
 
-	rm -rf /test/realworld
+	rm -rf "$work_dir"
 	echo ""
 }
 
-run_npm_benchmark
+for project in "${PROJECTS[@]}"; do
+	run_project_benchmark "$project"
+done
+
+rm -rf /test/realworld
 
 echo "=============================================="
 echo "         Real-World Benchmark Complete"
