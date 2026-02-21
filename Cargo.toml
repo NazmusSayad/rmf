@@ -1,0 +1,12 @@
+[package]
+name = "rmf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+rayon = "1"
+trash = "5"
+indicatif = "0.17"
+num_cpus = "1"
+dirs = "5"
