@@ -248,6 +248,131 @@ else
 fi
 
 echo ""
+echo "--- Multiple Targets Tests ---"
+
+echo "Test 21: Delete multiple targets"
+mkdir -p /test/t21_a /test/t21_b
+touch /test/t21_a/file.txt
+touch /test/t21_b/file.txt
+rmf --quiet /test/t21_a /test/t21_b
+if [ ! -d "/test/t21_a" ] && [ ! -d "/test/t21_b" ]; then
+	pass "Multiple targets deleted"
+else
+	fail "Multiple targets not deleted"
+fi
+
+echo ""
+echo "Test 22: Multiple targets with one non-existent"
+mkdir -p /test/t22
+touch /test/t22/file.txt
+output=$(rmf /test/t22 /nonexistent_xyz 2>&1)
+exit_code=$?
+if [ ! -d "/test/t22" ] && [ $exit_code -eq 2 ]; then
+	pass "Partial failure with non-existent target"
+else
+	fail "Unexpected behavior with mixed targets"
+fi
+
+echo ""
+echo "Test 23: Multiple targets all non-existent"
+output=$(rmf /nonexistent1 /nonexistent2 2>&1)
+exit_code=$?
+if [ $exit_code -eq 2 ]; then
+	pass "Fatal error when all targets non-existent"
+else
+	fail "Wrong exit code for all non-existent"
+fi
+
+echo ""
+echo "--- Symlink Edge Cases ---"
+
+echo "Test 24: Symlink to directory (not followed)"
+mkdir -p /test/t24_real
+touch /test/t24_real/file.txt
+ln -sf /test/t24_real /test/t24_link
+rmf --quiet /test/t24_link
+if [ ! -L "/test/t24_link" ] && [ -d "/test/t24_real" ]; then
+	pass "Symlink to directory removed, target preserved"
+else
+	fail "Symlink handling incorrect"
+fi
+rm -rf /test/t24_real
+
+echo ""
+echo "Test 25: Directory containing broken symlink"
+mkdir -p /test/t25
+ln -sf /nonexistent_target /test/t25/broken_link
+rmf --quiet /test/t25
+if [ ! -d "/test/t25" ]; then
+	pass "Broken symlink deleted"
+else
+	fail "Broken symlink not handled"
+fi
+
+echo ""
+echo "Test 26: Symlink to file"
+touch /test/t26_real.txt
+ln -sf /test/t26_real.txt /test/t26_link.txt
+rmf --quiet /test/t26_link.txt
+if [ ! -L "/test/t26_link.txt" ] && [ -f "/test/t26_real.txt" ]; then
+	pass "File symlink removed, target preserved"
+else
+	fail "File symlink handling incorrect"
+fi
+rm -f /test/t26_real.txt
+
+echo ""
+echo "--- Edge Cases ---"
+
+echo "Test 27: Empty filename handling"
+mkdir -p /test/t27
+touch "/test/t27/normal.txt"
+output=$(rmf --quiet /test/t27 2>&1)
+if [ ! -d "/test/t27" ]; then
+	pass "Normal deletion works"
+else
+	fail "Deletion failed"
+fi
+
+echo ""
+echo "Test 28: Very long filename"
+mkdir -p /test/t28
+longname=$(printf 'x%.0s' {1..200})
+touch "/test/t28/$longname"
+rmf --quiet /test/t28
+if [ ! -d "/test/t28" ]; then
+	pass "Long filename handled"
+else
+	fail "Long filename not handled"
+fi
+
+echo ""
+echo "Test 29: Special characters in filename"
+mkdir -p /test/t29
+touch "/test/t29/file with spaces.txt"
+touch "/test/t29/file'with'quotes.txt"
+touch '/test/t29/file"with"double.txt'
+rmf --quiet /test/t29
+if [ ! -d "/test/t29" ]; then
+	pass "Special characters handled"
+else
+	fail "Special characters not handled"
+fi
+
+echo ""
+echo "Test 30: Unicode filename"
+mkdir -p /test/t30
+touch "/test/t30/файл.txt"
+touch "/test/t30/文件.txt"
+touch "/test/t30/🎉.txt"
+rmf --quiet /test/t30
+if [ ! -d "/test/t30" ]; then
+	pass "Unicode filenames handled"
+else
+	fail "Unicode filenames not handled"
+fi
+
+echo ""
 echo "=============================================="
 echo "           Test Results"
 echo "=============================================="

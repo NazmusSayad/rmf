@@ -4,6 +4,8 @@ alias r := release
 
 default: build
 
+docker_image := "rmf-test"
+
 build:
     cargo build
 
@@ -17,28 +19,25 @@ clippy:
     cargo clippy -- -D warnings
 
 fmt:
-    cargo fmt -- --check 
+    cargo fmt -- --check
 
 fmt-fix:
     cargo fmt
 
 clean:
-    cargo clean 
+    cargo clean
 
 docker-build:
-    docker build -t rmf-test .
-
-docker-shell: docker-build
-    docker run --rm -it rmf-test bash
+    docker build --no-cache -q -t {{docker_image}} .
 
 docker-test: docker-build
-    MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash //scripts/run-tests.sh
+    MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/run-tests.sh
 
 docker-benchmark: docker-build
-    MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash //scripts/benchmark.sh
+    MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/benchmark.sh
 
 docker-realworld: docker-build
-    MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash //scripts/realworld-benchmark.sh
+    MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/realworld-benchmark.sh
 
 install: release
     cargo install --path .
