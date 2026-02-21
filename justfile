@@ -40,9 +40,6 @@ docker-benchmark: docker-build
 docker-hyperfine: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash //scripts/benchmark.sh --hyperfine
 
-docker-bench files="100000": docker-build
-    MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash -c "//scripts/generate-test-data.sh {{ files }} /test/bench && /usr/bin/time -v rmf --force /test/bench"
-
 install: release
     cargo install --path .
 

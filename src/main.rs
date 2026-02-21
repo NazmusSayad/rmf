@@ -13,8 +13,8 @@ const EXIT_FATAL: i32 = 2;
 #[derive(Parser, Debug)]
 #[command(name = "rmf", about = "Fast parallel recursive file deletion", version)]
 struct Args {
-    #[arg(help = "Target path to delete")]
-    target: PathBuf,
+    #[arg(required = true, help = "Target path(s) to delete")]
+    targets: Vec<PathBuf>,
 
     #[arg(short, long, help = "Skip confirmation prompt")]
     force: bool,
@@ -212,26 +212,84 @@ fn delete_entries_parallel(
     failures.load(Ordering::Relaxed)
 }
 
-fn main() -> ! {
-    let args = Args::parse();
-
-    if !args.target.exists() {
-        eprintln!("Error: Path does not exist: {}", args.target.display());
-        std::process::exit(EXIT_FATAL);
+fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, force: bool) -> i32 {
+    if !target.exists() {
+        eprintln!("Error: Path does not exist: {}", target.display());
+        return EXIT_FATAL;
     }
 
-    if is_protected_path(&args.target) && !args.force {
+    if is_protected_path(target) && !force {
         eprintln!(
             "Error: Refusing to delete protected path '{}'. Use --force to override.",
-            args.target.display()
+            target.display()
         );
-        std::process::exit(EXIT_FATAL);
+        return EXIT_FATAL;
     }
 
-    if !args.force && !args.quiet && !prompt_confirmation(&args.target) {
+    if !force && !quiet && !prompt_confirmation(target) {
         eprintln!("Aborted.");
-        std::process::exit(EXIT_SUCCESS);
+        return EXIT_SUCCESS;
     }
+
+    if use_trash {
+        if !quiet {
+            eprintln!("Moving '{}' to trash...", target.display());
+        }
+        match trash::delete(target) {
+            Ok(()) => return EXIT_SUCCESS,
+            Err(e) => {
+                eprintln!("Error moving to trash: {}", e);
+                return EXIT_PARTIAL_FAILURE;
+            }
+        }
+    }
+
+    if !quiet {
+        eprintln!("Scanning '{}'...", target.display());
+    }
+
+    let entries = match collect_entries(target) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("Error scanning directory: {}", e);
+            return EXIT_FATAL;
+        }
+    };
+
+    if entries.is_empty() {
+        return EXIT_SUCCESS;
+    }
+
+    let file_count = entries.iter().filter(|(_, is_dir, _)| !is_dir).count();
+    let dir_count = entries.iter().filter(|(_, is_dir, _)| *is_dir).count();
+
+    if !quiet {
+        eprintln!(
+            "Found {} files and {} directories in '{}'",
+            file_count,
+            dir_count,
+            target.display()
+        );
+    }
+
+    let failures = delete_entries_parallel(entries, threads, false, quiet);
+
+    if failures > 0 {
+        if !quiet {
+            eprintln!(
+                "'{}' completed with {} failure(s)",
+                target.display(),
+                failures
+            );
+        }
+        return EXIT_PARTIAL_FAILURE;
+    }
+
+    EXIT_SUCCESS
+}
+
+fn main() -> ! {
+    let args = Args::parse();
 
     let threads = args.threads.unwrap_or_else(num_cpus::get).clamp(1, 256);
 
@@ -239,64 +297,23 @@ fn main() -> ! {
         eprintln!("Using {} thread(s)", threads);
     }
 
-    if args.trash {
-        if !args.quiet {
-            eprintln!("Moving to trash...");
-        }
-        match trash::delete(&args.target) {
-            Ok(()) => {
-                if !args.quiet {
-                    eprintln!("Successfully moved to trash.");
-                }
-                std::process::exit(EXIT_SUCCESS);
-            }
-            Err(e) => {
-                eprintln!("Error moving to trash: {}", e);
-                std::process::exit(EXIT_PARTIAL_FAILURE);
-            }
+    let mut has_partial_failure = false;
+    let mut has_fatal_error = false;
+
+    for target in &args.targets {
+        let exit_code = delete_target(target, threads, args.trash, args.quiet, args.force);
+        match exit_code {
+            EXIT_PARTIAL_FAILURE => has_partial_failure = true,
+            EXIT_FATAL => has_fatal_error = true,
+            _ => {}
         }
     }
 
-    if !args.quiet {
-        eprintln!("Scanning directory...");
+    if has_fatal_error {
+        std::process::exit(EXIT_FATAL);
     }
-
-    let entries = match collect_entries(&args.target) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("Error scanning directory: {}", e);
-            std::process::exit(EXIT_FATAL);
-        }
-    };
-
-    if entries.is_empty() {
-        if !args.quiet {
-            eprintln!("Nothing to delete.");
-        }
-        std::process::exit(EXIT_SUCCESS);
-    }
-
-    let file_count = entries.iter().filter(|(_, is_dir, _)| !is_dir).count();
-    let dir_count = entries.iter().filter(|(_, is_dir, _)| *is_dir).count();
-
-    if !args.quiet {
-        eprintln!(
-            "Found {} files and {} directories to delete",
-            file_count, dir_count
-        );
-    }
-
-    let failures = delete_entries_parallel(entries, threads, false, args.quiet);
-
-    if failures > 0 {
-        if !args.quiet {
-            eprintln!("Completed with {} failure(s)", failures);
-        }
+    if has_partial_failure {
         std::process::exit(EXIT_PARTIAL_FAILURE);
-    }
-
-    if !args.quiet {
-        eprintln!("Successfully deleted.");
     }
     std::process::exit(EXIT_SUCCESS);
 }
