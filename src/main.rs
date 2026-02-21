@@ -43,6 +43,10 @@ fn is_protected_path(path: &Path) -> bool {
         Err(_) => return false,
     };
 
+    if canonical == Path::new("/") {
+        return true;
+    }
+
     let path_str = canonical.to_string_lossy();
 
     if cfg!(target_os = "windows") {
@@ -50,15 +54,32 @@ fn is_protected_path(path: &Path) -> bool {
         return protected.iter().any(|p| path_str.eq_ignore_ascii_case(p));
     }
 
-    if canonical == Path::new("/") {
-        return true;
-    }
-
     let home = get_home_dir();
     if let Ok(home_canonical) = fs::canonicalize(&home) {
         if canonical == home_canonical {
             return true;
         }
+    }
+
+    false
+}
+
+fn is_force_protected_path(path: &Path) -> bool {
+    let canonical = match fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+
+    if canonical == Path::new("/") {
+        return true;
+    }
+
+    if cfg!(target_os = "windows") {
+        let canonical_str = canonical.to_string_lossy();
+        let protected = ["C:\\", "C:/"];
+        return protected
+            .iter()
+            .any(|p| canonical_str.eq_ignore_ascii_case(p));
     }
 
     false
@@ -317,6 +338,14 @@ fn process_directory(
 fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, force: bool) -> i32 {
     if !target.exists() {
         eprintln!("Error: Path does not exist: {}", target.display());
+        return EXIT_FATAL;
+    }
+
+    if is_force_protected_path(target) {
+        eprintln!(
+            "Error: Refusing to delete root directory '{}'.",
+            target.display()
+        );
         return EXIT_FATAL;
     }
 
