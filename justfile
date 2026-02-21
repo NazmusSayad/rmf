@@ -28,7 +28,7 @@ clean:
     cargo clean
 
 docker-build:
-    docker build --no-cache -q -t {{docker_image}} .
+    docker build -q -t {{docker_image}} .
 
 docker-test: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/run-tests.sh
