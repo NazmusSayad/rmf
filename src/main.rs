@@ -423,5 +423,5 @@ fn main() -> ! {
     if has_partial_failure {
         std::process::exit(EXIT_ERROR);
     }
-    std::process::exit(EXIT_SUCCESS);
+    std::process::exit(EXIT_SUCCESS)
 }
