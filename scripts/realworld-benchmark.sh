@@ -13,7 +13,6 @@ PROJECTS=(
 	"facebook/react"
 	"metabase/metabase"
 	"babel/babel"
-	"quran/quran.com-frontend-next"
 )
 
 run_project_benchmark() {
