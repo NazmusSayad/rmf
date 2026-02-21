@@ -4,7 +4,7 @@
 
 Build a Rust CLI tool that deletes large directory trees faster than typical single-threaded deletion in developer workflows, while remaining safe by default.
 
-MVP focuses strictly on high-performance recursive deletion on Unix-like systems.
+MVP focuses on high-performance recursive deletion on Linux, macOS, and Windows.
 
 ---
 
@@ -55,6 +55,8 @@ Flags:
 - `--force` → skip confirmation.
 - `--threads <n>` → override worker count.
 - `--quiet` → suppress non-error output.
+- `--trash` → move to system trash (macOS/Linux) or recycle bin (Windows) instead of permanent delete; disabled by default.
+- Progress bar: show deletion progress by default; `--quiet` suppresses it.
 
 Only one target path supported in MVP.
 
@@ -87,7 +89,7 @@ Exit codes:
 - Use streaming directory traversal (e.g., iterator-based walk).
 - No async runtime in MVP.
 - No background deletion mode.
-- Unix-like systems only (Linux/macOS) for first release.
+- Cross-platform: Linux, macOS, and Windows.
 
 Deletion algorithm (MVP):
 
@@ -105,17 +107,3 @@ Deletion algorithm (MVP):
 - Refuses to delete `/` without override.
 - Thread count flag correctly limits concurrency.
 - Returns correct exit codes for success and partial failure.
-
----
-
-## 7. Explicitly Out of Scope
-
-- Windows support.
-- Background rename-and-delete mode.
-- Exclusion patterns.
-- Progress bars.
-- Secure wipe/shred.
-- Trash/recycle-bin integration.
-- Multiple targets per invocation.
-
-Future features depend on benchmarking results and real-world feedback.
