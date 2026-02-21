@@ -87,8 +87,6 @@ Exit codes:
 
 - Implemented in stable Rust.
 - Use streaming directory traversal (e.g., iterator-based walk).
-- No async runtime in MVP.
-- No background deletion mode.
 - Cross-platform: Linux, macOS, and Windows.
 
 Deletion algorithm (MVP):
@@ -107,3 +105,7 @@ Deletion algorithm (MVP):
 - Refuses to delete `/` without override.
 - Thread count flag correctly limits concurrency.
 - Returns correct exit codes for success and partial failure.
+
+## References
+
+- https://github.com/shaggie76/FastDelete
