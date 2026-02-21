@@ -4,35 +4,13 @@ SCRIPTS_DIR="/scripts"
 
 echo "=============================================="
 echo "       rmf vs rm -rf Benchmark Suite"
-echo "       Powered by hyperfine"
 echo "=============================================="
 echo "System: $(uname -a)"
 echo "CPUs: $(nproc)"
 echo "Memory: $(free -h | grep Mem | awk '{print $2}')"
 echo ""
 
-run_hyperfine_benchmark() {
-	local name=$1
-	local files=$2
-
-	echo ""
-	echo "=========================================="
-	echo "Benchmark: $name ($files files)"
-	echo "=========================================="
-	echo ""
-
-	hyperfine \
-		--warmup 1 \
-		--runs 5 \
-		--prepare "$SCRIPTS_DIR/generate-test-data.sh $files /test/bench" \
-		--show-output \
-		"rmf --force --quiet /test/bench" \
-		"rm -rf /test/bench"
-
-	echo ""
-}
-
-run_single_benchmark() {
+run_benchmark() {
 	local name=$1
 	local files=$2
 
@@ -53,19 +31,11 @@ run_single_benchmark() {
 	echo ""
 }
 
-if [ "$1" = "--hyperfine" ]; then
-	echo "Using hyperfine for statistical benchmarking..."
-	run_hyperfine_benchmark "Small" 1000
-	run_hyperfine_benchmark "Medium" 10000
-	run_hyperfine_benchmark "Large" 50000
-	run_hyperfine_benchmark "Very_Large" 100000
-else
-	run_single_benchmark "Tiny" 100
-	run_single_benchmark "Small" 1000
-	run_single_benchmark "Medium" 10000
-	run_single_benchmark "Large" 50000
-	run_single_benchmark "Very Large" 100000
-fi
+run_benchmark "Tiny" 100
+run_benchmark "Small" 1000
+run_benchmark "Medium" 10000
+run_benchmark "Large" 50000
+run_benchmark "Very Large" 100000
 
 echo "=============================================="
 echo "              Benchmark Complete"
