@@ -40,6 +40,9 @@ docker-benchmark: docker-build
 docker-hyperfine: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash //scripts/benchmark.sh --hyperfine
 
+docker-realworld: docker-build
+    MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash //scripts/realworld-benchmark.sh
+
 install: release
     cargo install --path .
 
