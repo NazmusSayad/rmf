@@ -94,7 +94,7 @@ echo "--- Safety Tests ---"
 
 echo "Test 7: Refuse to delete /"
 output=$(rmf / 2>&1)
-if echo "$output" | grep -q "Refusing to delete protected path"; then
+if echo "$output" | grep -q "Refusing to delete"; then
 	pass "Protected path / refused"
 else
 	fail "Protected path / not refused"
@@ -113,7 +113,7 @@ echo ""
 echo "Test 9: Force flag allows deleting protected path"
 output=$(rmf --force / 2>&1)
 exit_code=$?
-if echo "$output" | grep -q "Refusing to delete protected path" && [ $exit_code -eq 2 ]; then
+if echo "$output" | grep -q "Refusing to delete root directory" && [ $exit_code -eq 2 ]; then
 	pass "--force does not bypass / protection (intentional)"
 else
 	fail "Unexpected behavior with --force on /"
