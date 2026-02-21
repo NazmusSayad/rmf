@@ -36,6 +36,7 @@ run_benchmark "Small" 1000
 run_benchmark "Medium" 10000
 run_benchmark "Large" 50000
 run_benchmark "Very Large" 100000
+run_benchmark "Extremely Large" 1000000
 
 echo "=============================================="
 echo "              Benchmark Complete"
