@@ -22,7 +22,7 @@ run_benchmark() {
 
 	echo "--- rmf ---"
 	$SCRIPTS_DIR/generate-test-data.sh $files /test/bench_rmf
-	/usr/bin/time -v rmf --force --quiet /test/bench_rmf 2>&1 | grep -E "(Elapsed|Maximum resident)"
+	/usr/bin/time -v rmf --quiet /test/bench_rmf 2>&1 | grep -E "(Elapsed|Maximum resident)"
 
 	echo ""
 	echo "--- rm -rf ---"
