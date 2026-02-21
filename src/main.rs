@@ -51,7 +51,9 @@ fn is_protected_path(path: &Path) -> bool {
     let path_str = canonical.to_string_lossy();
 
     if cfg!(target_os = "windows") {
-        return PROTECTED_PATHS.iter().any(|p| path_str.eq_ignore_ascii_case(p));
+        return PROTECTED_PATHS
+            .iter()
+            .any(|p| path_str.eq_ignore_ascii_case(p));
     }
 
     let home = get_home_dir();
