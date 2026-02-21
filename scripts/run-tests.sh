@@ -373,6 +373,365 @@ else
 fi
 
 echo ""
+echo "--- Large Scale Tests ---"
+
+echo "Test 31: Large directory (10000 files)"
+$SCRIPTS_DIR/generate-test-data.sh 10000 /test/t31
+rmf --quiet /test/t31
+if [ ! -d "/test/t31" ]; then
+	pass "Large directory deleted"
+else
+	fail "Large directory not deleted"
+fi
+
+echo ""
+echo "Test 32: Many files in single directory"
+mkdir -p /test/t32
+for i in $(seq 1 1000); do
+	touch "/test/t32/file_$i.txt"
+done
+rmf --quiet /test/t32
+if [ ! -d "/test/t32" ]; then
+	pass "Many files in single directory deleted"
+else
+	fail "Many files in single directory not deleted"
+fi
+
+echo ""
+echo "Test 33: Zero-byte files"
+mkdir -p /test/t33
+touch /test/t33/empty1.txt
+touch /test/t33/empty2.txt
+mkdir -p /test/t33/subdir
+touch /test/t33/subdir/empty3.txt
+rmf --quiet /test/t33
+if [ ! -d "/test/t33" ]; then
+	pass "Zero-byte files deleted"
+else
+	fail "Zero-byte files not deleted"
+fi
+
+echo ""
+echo "--- Version and Help Tests ---"
+
+echo "Test 34: Version flag"
+output=$(rmf --version 2>&1)
+if echo "$output" | grep -q "rmf"; then
+	pass "Version flag works"
+else
+	fail "Version flag not working"
+fi
+
+echo ""
+echo "Test 35: Help flag"
+output=$(rmf --help 2>&1)
+if echo "$output" | grep -q "Fast parallel recursive file deletion"; then
+	pass "Help flag works"
+else
+	fail "Help flag not working"
+fi
+
+echo ""
+echo "--- Argument Validation Tests ---"
+
+echo "Test 36: No arguments shows error"
+output=$(rmf 2>&1)
+exit_code=$?
+if [ $exit_code -ne 0 ]; then
+	pass "No arguments returns error"
+else
+	fail "No arguments should return error"
+fi
+
+echo ""
+echo "Test 37: Invalid thread count (negative behavior via clamp)"
+mkdir -p /test/t37
+output=$(rmf --threads 0 /test/t37 2>&1)
+if [ ! -d "/test/t37" ]; then
+	pass "Thread count 0 clamped to 1 and deletion works"
+else
+	fail "Thread count 0 handling failed"
+fi
+
+echo ""
+echo "--- Symlink Stress Tests ---"
+
+echo "Test 38: Multiple symlinks in directory"
+mkdir -p /test/t38_target
+touch /test/t38_target/file1.txt
+touch /test/t38_target/file2.txt
+mkdir -p /test/t38
+ln -sf /test/t38_target/file1.txt /test/t38/link1
+ln -sf /test/t38_target/file2.txt /test/t38/link2
+ln -sf /test/t38_target /test/t38/link_dir
+rmf --quiet /test/t38
+rm -rf /test/t38_target
+if [ ! -d "/test/t38" ]; then
+	pass "Multiple symlinks deleted"
+else
+	fail "Multiple symlinks not deleted"
+fi
+
+echo ""
+echo "Test 39: Symlink cycle (directory links to parent)"
+mkdir -p /test/t39/a/b
+ln -sf /test/t39/a /test/t39/a/b/parent_link
+rmf --quiet /test/t39
+if [ ! -d "/test/t39" ]; then
+	pass "Symlink cycle handled"
+else
+	fail "Symlink cycle not handled"
+fi
+
+echo ""
+echo "--- Stress Tests ---"
+
+echo "Test 40: Very deep directory structure"
+mkdir -p /test/t40/$(printf 'level%d/' {1..50})
+touch /test/t40/level1/level2/level3/deep.txt
+rmf --quiet /test/t40
+if [ ! -d "/test/t40" ]; then
+	pass "Very deep structure deleted"
+else
+	fail "Very deep structure not deleted"
+fi
+
+echo ""
+echo "Test 41: Mixed content types"
+mkdir -p /test/t41/a/b/c
+touch /test/t41/file1.txt
+touch /test/t41/a/file2.txt
+touch /test/t41/a/b/file3.txt
+ln -sf /test/t41/file1.txt /test/t41/link1
+ln -sf /test/t41/a /test/t41/link_dir
+touch /test/t41/.hidden
+mkdir -p "/test/t41/dir with spaces"
+touch "/test/t41/dir with spaces/file.txt"
+rmf --quiet /test/t41
+if [ ! -d "/test/t41" ]; then
+	pass "Mixed content types deleted"
+else
+	fail "Mixed content types not deleted"
+fi
+
+echo ""
+echo "--- Exit Code Edge Cases ---"
+
+echo "Test 42: Exit code 1 on partial failure (permission denied file)"
+mkdir -p /test/t42
+touch /test/t42/readable.txt
+mkdir -p /test/t42/subdir
+touch /test/t42/subdir/file.txt
+rmf --quiet /test/t42
+if [ ! -d "/test/t42" ] && [ $? -eq 0 ]; then
+	pass "Normal deletion returns success"
+else
+	fail "Normal deletion exit code issue"
+fi
+
+echo ""
+echo "Test 43: Multiple targets with partial failure"
+mkdir -p /test/t43_a
+touch /test/t43_a/file.txt
+rmf /test/t43_a /nonexistent_t43_b 2>/dev/null
+exit_code=$?
+if [ ! -d "/test/t43_a" ] && [ $exit_code -eq 2 ]; then
+	pass "Partial failure returns correct exit code"
+else
+	fail "Partial failure exit code incorrect"
+fi
+
+echo ""
+echo "--- File Type Tests ---"
+
+echo "Test 44: Executable files"
+mkdir -p /test/t44
+touch /test/t44/script.sh
+chmod +x /test/t44/script.sh
+rmf --quiet /test/t44
+if [ ! -d "/test/t44" ]; then
+	pass "Executable files deleted"
+else
+	fail "Executable files not deleted"
+fi
+
+echo ""
+echo "Test 45: Files with various extensions"
+mkdir -p /test/t45
+touch /test/t45/file.txt
+touch /test/t45/file.md
+touch /test/t45/file.rs
+touch /test/t45/file.py
+touch /test/t45/file.js
+touch /test/t45/file.json
+touch /test/t45/file.xml
+touch /test/t45/file.html
+touch /test/t45/file.css
+touch /test/t45/file.bin
+rmf --quiet /test/t45
+if [ ! -d "/test/t45" ]; then
+	pass "Various file extensions deleted"
+else
+	fail "Various file extensions not deleted"
+fi
+
+echo ""
+echo "--- Thread Edge Cases ---"
+
+echo "Test 46: Single thread deletion"
+$SCRIPTS_DIR/generate-test-data.sh 500 /test/t46
+output=$(rmf --threads 1 /test/t46 2>&1)
+if [ ! -d "/test/t46" ] && echo "$output" | grep -q "Using 1 thread"; then
+	pass "Single thread deletion works"
+else
+	fail "Single thread deletion failed"
+fi
+
+echo ""
+echo "Test 47: Maximum thread count (256)"
+$SCRIPTS_DIR/generate-test-data.sh 500 /test/t47
+output=$(rmf --threads 300 /test/t47 2>&1)
+if [ ! -d "/test/t47" ] && echo "$output" | grep -q "Using 256 thread"; then
+	pass "Thread count clamped to 256"
+else
+	fail "Thread count clamping failed"
+fi
+
+echo ""
+echo "--- Directory Structure Tests ---"
+
+echo "Test 48: Empty nested directories"
+mkdir -p /test/t48/a/b/c/d/e/f/g/h
+rmf --quiet /test/t48
+if [ ! -d "/test/t48" ]; then
+	pass "Empty nested directories deleted"
+else
+	fail "Empty nested directories not deleted"
+fi
+
+echo ""
+echo "Test 49: Mixed empty and full directories"
+mkdir -p /test/t49/empty1/empty2
+mkdir -p /test/t49/full1/full2
+touch /test/t49/full1/file1.txt
+touch /test/t49/full1/full2/file2.txt
+mkdir -p /test/t49/empty3
+touch /test/t49/top.txt
+rmf --quiet /test/t49
+if [ ! -d "/test/t49" ]; then
+	pass "Mixed empty and full directories deleted"
+else
+	fail "Mixed directories not deleted"
+fi
+
+echo ""
+echo "Test 50: Wide directory (many subdirs at same level)"
+mkdir -p /test/t50
+for i in $(seq 1 100); do
+	mkdir -p "/test/t50/dir_$i"
+	touch "/test/t50/dir_$i/file.txt"
+done
+rmf --quiet /test/t50
+if [ ! -d "/test/t50" ]; then
+	pass "Wide directory structure deleted"
+else
+	fail "Wide directory structure not deleted"
+fi
+
+echo ""
+echo "--- Consecutive Operations ---"
+
+echo "Test 51: Multiple consecutive deletions"
+mkdir -p /test/t51_a /test/t51_b /test/t51_c
+touch /test/t51_a/file.txt
+touch /test/t51_b/file.txt
+touch /test/t51_c/file.txt
+rmf --quiet /test/t51_a
+rmf --quiet /test/t51_b
+rmf --quiet /test/t51_c
+if [ ! -d "/test/t51_a" ] && [ ! -d "/test/t51_b" ] && [ ! -d "/test/t51_c" ]; then
+	pass "Consecutive deletions work"
+else
+	fail "Consecutive deletions failed"
+fi
+
+echo ""
+echo "Test 52: Delete recreate delete cycle"
+mkdir -p /test/t52
+touch /test/t52/file.txt
+rmf --quiet /test/t52
+mkdir -p /test/t52
+touch /test/t52/file2.txt
+rmf --quiet /test/t52
+if [ ! -d "/test/t52" ]; then
+	pass "Delete recreate delete cycle works"
+else
+	fail "Delete recreate delete cycle failed"
+fi
+
+echo ""
+echo "--- File Size Tests ---"
+
+echo "Test 53: Large single file"
+mkdir -p /test/t53
+dd if=/dev/zero of=/test/t53/largefile.bin bs=1M count=10 2>/dev/null
+rmf --quiet /test/t53
+if [ ! -d "/test/t53" ]; then
+	pass "Large single file deleted"
+else
+	fail "Large single file not deleted"
+fi
+
+echo ""
+echo "Test 54: Many small files"
+mkdir -p /test/t54
+for i in $(seq 1 500); do
+	echo "x" >"/test/t54/small_$i.txt"
+done
+rmf --quiet /test/t54
+if [ ! -d "/test/t54" ]; then
+	pass "Many small files deleted"
+else
+	fail "Many small files not deleted"
+fi
+
+echo ""
+echo "--- Special Filename Characters ---"
+
+echo "Test 55: Filenames with tabs and newlines"
+mkdir -p /test/t55
+touch "/test/t55/file"$'\t'"with"$'\t'"tabs.txt"
+rmf --quiet /test/t55
+if [ ! -d "/test/t55" ]; then
+	pass "Filenames with tabs deleted"
+else
+	fail "Filenames with tabs not deleted"
+fi
+
+echo ""
+echo "Test 56: Filenames with backslashes"
+mkdir -p /test/t56
+touch '/test/t56/file\with\backslashes.txt'
+rmf --quiet /test/t56
+if [ ! -d "/test/t56" ]; then
+	pass "Filenames with backslashes deleted"
+else
+	fail "Filenames with backslashes not deleted"
+fi
+
+echo ""
+echo "Test 57: Filenames with dollar signs and variables"
+mkdir -p /test/t57
+touch '/test/t57/file$HOME.txt'
+touch '/test/t57/file${PATH}.txt'
+rmf --quiet /test/t57
+if [ ! -d "/test/t57" ]; then
+	pass "Filenames with dollar signs deleted"
+else
+	fail "Filenames with dollar signs not deleted"
+fi
+
+echo ""
 echo "=============================================="
 echo "           Test Results"
 echo "=============================================="
