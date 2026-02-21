@@ -36,8 +36,7 @@ Non-goal: replacing system `rm` for all use cases.
 
 ### 3.3 Safety Rules
 
-- Refuse to delete `/`.
-- Refuse to delete user home directory unless `--force`.
+- Refuse to delete `/` or user home directory unless `--force`.
 
 ### 3.4 CLI Contract
 

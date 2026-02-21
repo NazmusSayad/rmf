@@ -1,7 +1,6 @@
 use clap::Parser;
 use std::collections::BinaryHeap;
 use std::fs;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -17,7 +16,11 @@ struct Args {
     #[arg(required = true, help = "Target path(s) to delete")]
     targets: Vec<PathBuf>,
 
-    #[arg(short, long, help = "Skip confirmation prompt")]
+    #[arg(
+        short,
+        long,
+        help = "Override safety guards (allow deleting protected paths)"
+    )]
     force: bool,
 
     #[arg(long, value_name = "N", help = "Number of worker threads")]
@@ -59,15 +62,6 @@ fn is_protected_path(path: &Path) -> bool {
     }
 
     false
-}
-
-fn prompt_confirmation(path: &Path) -> bool {
-    print!("Delete '{}' and all its contents? [y/N] ", path.display());
-    io::stdout().flush().ok();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).ok();
-    matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
 struct WorkQueue<T> {
@@ -328,15 +322,10 @@ fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, fo
 
     if is_protected_path(target) && !force {
         eprintln!(
-            "Error: Refusing to delete protected path '{}'. Use --Force to override.",
+            "Error: Refusing to delete protected path '{}'. Use --force to override.",
             target.display()
         );
         return EXIT_FATAL;
-    }
-
-    if !force && !quiet && !prompt_confirmation(target) {
-        eprintln!("Aborted.");
-        return EXIT_SUCCESS;
     }
 
     if use_trash {
