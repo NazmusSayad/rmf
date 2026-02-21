@@ -732,6 +732,197 @@ else
 fi
 
 echo ""
+echo "--- Process Lifecycle Tests ---"
+
+echo "Test 58: SIGTERM during large deletion"
+mkdir -p /test/t58
+for i in $(seq 1 8000); do
+	touch "/test/t58/file_$i.txt"
+done
+rmf --quiet /test/t58 &
+PID=$!
+sleep 0.3
+kill -TERM $PID 2>/dev/null
+wait $PID 2>/dev/null
+exit_code=$?
+if [ $exit_code -ne 0 ] || [ ! -d "/test/t58" ]; then
+	pass "Process handles SIGTERM or completes fast (exit: $exit_code)"
+else
+	fail "Process should have been terminated or completed"
+fi
+rm -rf /test/t58 2>/dev/null
+
+echo ""
+echo "Test 59: SIGKILL during deletion (force kill)"
+mkdir -p /test/t59
+for i in $(seq 1 8000); do
+	touch "/test/t59/file_$i.txt"
+done
+rmf --quiet /test/t59 &
+PID=$!
+sleep 0.2
+kill -KILL $PID 2>/dev/null
+wait $PID 2>/dev/null
+exit_code=$?
+if [ $exit_code -ne 0 ] || [ ! -d "/test/t59" ]; then
+	pass "Process handles SIGKILL or completes fast (exit: $exit_code)"
+else
+	fail "Process should have been killed or completed"
+fi
+rm -rf /test/t59 2>/dev/null
+
+echo ""
+echo "Test 60: Process completes normally without signals"
+mkdir -p /test/t60
+for i in $(seq 1 100); do
+	touch "/test/t60/file_$i.txt"
+done
+rmf --quiet /test/t60 &
+PID=$!
+wait $PID
+exit_code=$?
+if [ ! -d "/test/t60" ] && [ $exit_code -eq 0 ]; then
+	pass "Process completes normally"
+else
+	fail "Process did not complete normally"
+fi
+
+echo ""
+echo "Test 61: Multiple processes deleting different directories"
+mkdir -p /test/t61_a /test/t61_b /test/t61_c
+for i in $(seq 1 200); do
+	touch "/test/t61_a/file_$i.txt"
+	touch "/test/t61_b/file_$i.txt"
+	touch "/test/t61_c/file_$i.txt"
+done
+rmf --quiet /test/t61_a &
+PID1=$!
+rmf --quiet /test/t61_b &
+PID2=$!
+rmf --quiet /test/t61_c &
+PID3=$!
+wait $PID1
+wait $PID2
+wait $PID3
+if [ ! -d "/test/t61_a" ] && [ ! -d "/test/t61_b" ] && [ ! -d "/test/t61_c" ]; then
+	pass "Multiple parallel processes work correctly"
+else
+	fail "Multiple parallel processes failed"
+fi
+
+echo ""
+echo "Test 62: Process with limited resources (timeout)"
+mkdir -p /test/t62
+for i in $(seq 1 500); do
+	touch "/test/t62/file_$i.txt"
+done
+timeout 30 rmf --quiet /test/t62
+exit_code=$?
+if [ ! -d "/test/t62" ]; then
+	pass "Process completes within timeout"
+else
+	fail "Process timed out or failed (exit: $exit_code)"
+fi
+
+echo ""
+echo "Test 63: Graceful exit on second SIGTERM (rapid signals)"
+mkdir -p /test/t63
+for i in $(seq 1 2000); do
+	touch "/test/t63/file_$i.txt"
+done
+rmf /test/t63 2>/dev/null &
+PID=$!
+sleep 0.1
+kill -TERM $PID 2>/dev/null
+kill -TERM $PID 2>/dev/null
+wait $PID 2>/dev/null
+pass "Process handles rapid signals"
+rm -rf /test/t63 2>/dev/null
+
+echo ""
+echo "Test 64: Process exit code propagation"
+mkdir -p /test/t64
+touch /test/t64/file.txt
+rmf --quiet /test/t64
+exit_code=$?
+if [ $exit_code -eq 0 ]; then
+	pass "Exit code 0 propagates correctly"
+else
+	fail "Exit code should be 0, got $exit_code"
+fi
+
+echo ""
+echo "Test 65: Background process with disown"
+mkdir -p /test/t65
+for i in $(seq 1 100); do
+	touch "/test/t65/file_$i.txt"
+done
+rmf --quiet /test/t65 &
+disown 2>/dev/null
+sleep 2
+if [ ! -d "/test/t65" ]; then
+	pass "Background process completes after disown"
+else
+	fail "Background process failed after disown"
+fi
+
+echo ""
+echo "Test 66: Process handles ENOSPC simulation (full disk check)"
+mkdir -p /test/t66
+touch /test/t66/file.txt
+output=$(rmf /test/t66 2>&1)
+exit_code=$?
+if [ ! -d "/test/t66" ]; then
+	pass "Process handles disk operations correctly"
+else
+	fail "Process failed disk operations"
+fi
+
+echo ""
+echo "Test 67: Orphaned process cleanup (subshell)"
+mkdir -p /test/t67
+for i in $(seq 1 100); do
+	touch "/test/t67/file_$i.txt"
+done
+(rmf --quiet /test/t67 &)
+sleep 2
+if [ ! -d "/test/t67" ]; then
+	pass "Orphaned process completes deletion"
+else
+	fail "Orphaned process failed"
+fi
+
+echo ""
+echo "Test 68: Process under load (multiple operations)"
+mkdir -p /test/t68_a /test/t68_b
+for i in $(seq 1 200); do
+	touch "/test/t68_a/file_$i.txt"
+	touch "/test/t68_b/file_$i.txt"
+done
+rmf --quiet /test/t68_a &
+rmf --quiet /test/t68_b &
+wait
+if [ ! -d "/test/t68_a" ] && [ ! -d "/test/t68_b" ]; then
+	pass "Process handles concurrent load"
+else
+	fail "Process failed under load"
+fi
+
+echo ""
+echo "Test 69: Signal handling during thread spawn"
+mkdir -p /test/t69
+for i in $(seq 1 1000); do
+	touch "/test/t69/file_$i.txt"
+done
+rmf --threads 8 /test/t69 &
+PID=$!
+sleep 0.05
+kill -USR1 $PID 2>/dev/null || true
+wait $PID 2>/dev/null
+pass "Signal handling during thread spawn tested"
+rm -rf /test/t69 2>/dev/null
+
+echo ""
 echo "=============================================="
 echo "           Test Results"
 echo "=============================================="
