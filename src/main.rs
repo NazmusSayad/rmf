@@ -7,8 +7,9 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 const EXIT_SUCCESS: i32 = 0;
-const EXIT_PARTIAL_FAILURE: i32 = 1;
+const EXIT_ERROR: i32 = 1;
 const EXIT_FATAL: i32 = 2;
+const PROTECTED_PATHS: [&str; 2] = ["C:\\", "C:/"];
 
 #[derive(Parser, Debug)]
 #[command(name = "rmf", about = "Fast parallel recursive file deletion", version)]
@@ -50,8 +51,7 @@ fn is_protected_path(path: &Path) -> bool {
     let path_str = canonical.to_string_lossy();
 
     if cfg!(target_os = "windows") {
-        let protected = ["C:\\", "C:/"];
-        return protected.iter().any(|p| path_str.eq_ignore_ascii_case(p));
+        return PROTECTED_PATHS.iter().any(|p| path_str.eq_ignore_ascii_case(p));
     }
 
     let home = get_home_dir();
@@ -177,7 +177,6 @@ fn delete_fast(target: &Path, num_threads: usize, quiet: bool) -> i32 {
         let stats = Arc::clone(&stats);
         let pending_jobs = Arc::clone(&pending_jobs);
         let root = Arc::clone(&root);
-        let quiet = quiet;
 
         let handle = thread::spawn(move || {
             while let Some((path, depth)) = queue.pop() {
@@ -236,7 +235,7 @@ fn delete_fast(target: &Path, num_threads: usize, quiet: bool) -> i32 {
     }
 
     if failures > 0 {
-        EXIT_PARTIAL_FAILURE
+        EXIT_ERROR
     } else {
         EXIT_SUCCESS
     }
@@ -313,12 +312,7 @@ fn process_directory(
         queue.push_many(subdirs);
     }
 
-    if path == &*root {
-        deferred_dirs.lock().unwrap().push(DeferredDir {
-            path: path.to_path_buf(),
-            depth,
-        });
-    } else if has_files || has_subdirs {
+    if path == root || has_files || has_subdirs {
         deferred_dirs.lock().unwrap().push(DeferredDir {
             path: path.to_path_buf(),
             depth,
@@ -365,7 +359,7 @@ fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, fo
             Ok(()) => return EXIT_SUCCESS,
             Err(e) => {
                 eprintln!("Error moving to trash: {}", e);
-                return EXIT_PARTIAL_FAILURE;
+                return EXIT_ERROR;
             }
         }
     }
@@ -389,7 +383,7 @@ fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, fo
     if metadata.is_file() || metadata.is_symlink() {
         if let Err(e) = fs::remove_file(target) {
             eprintln!("Error deleting file: {}", e);
-            return EXIT_PARTIAL_FAILURE;
+            return EXIT_ERROR;
         }
         if !quiet {
             eprintln!("1 files deleted, 0 directories (0 failures)");
@@ -415,7 +409,7 @@ fn main() -> ! {
     for target in &args.targets {
         let exit_code = delete_target(target, threads, args.trash, args.quiet, args.force);
         match exit_code {
-            EXIT_PARTIAL_FAILURE => has_partial_failure = true,
+            EXIT_ERROR => has_partial_failure = true,
             EXIT_FATAL => has_fatal_error = true,
             _ => {}
         }
@@ -425,7 +419,7 @@ fn main() -> ! {
         std::process::exit(EXIT_FATAL);
     }
     if has_partial_failure {
-        std::process::exit(EXIT_PARTIAL_FAILURE);
+        std::process::exit(EXIT_ERROR);
     }
     std::process::exit(EXIT_SUCCESS);
 }
