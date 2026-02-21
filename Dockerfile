@@ -2,14 +2,8 @@ FROM rust:1.93-slim
 
 WORKDIR /app
 
-RUN apt-get update -qq && apt-get install -y -qq \
-    pkg-config \
-    time \
-    nodejs \
-    npm \
-    grep \
-    coreutils \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -qq
+RUN apt-get install -y -qq pkg-config time nodejs npm grep procps coreutils
 
 COPY Cargo.toml ./
 COPY src ./src
