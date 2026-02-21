@@ -25,14 +25,14 @@ fmt-fix:
 clean:
     cargo clean 
 
-docker-test: docker-build
-    docker run --rm rmf-test
-
 docker-build:
     docker build -t rmf-test .
 
 docker-shell: docker-build
     docker run --rm -it rmf-test bash
+
+docker-test: docker-build
+    MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash //scripts/run-tests.sh
 
 docker-benchmark: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm rmf-test bash //scripts/benchmark.sh

@@ -1,10 +1,11 @@
 use clap::Parser;
-use indicatif::{ProgressBar, ProgressStyle};
-use rayon::prelude::*;
+use std::collections::BinaryHeap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 
 const EXIT_SUCCESS: i32 = 0;
 const EXIT_PARTIAL_FAILURE: i32 = 1;
@@ -69,147 +70,254 @@ fn prompt_confirmation(path: &Path) -> bool {
     matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
-fn collect_entries(target: &Path) -> io::Result<Vec<(PathBuf, bool, usize)>> {
-    let mut entries = Vec::new();
-    let mut stack = vec![(target.to_path_buf(), 0usize)];
+struct WorkQueue<T> {
+    queue: Mutex<Vec<T>>,
+    condvar: Condvar,
+    done: AtomicBool,
+}
 
-    while let Some((path, depth)) = stack.pop() {
-        let metadata = match fs::symlink_metadata(&path) {
-            Ok(m) => m,
-            Err(_) => {
-                entries.push((path, false, depth));
-                continue;
+impl<T> WorkQueue<T> {
+    fn new() -> Self {
+        Self {
+            queue: Mutex::new(Vec::new()),
+            condvar: Condvar::new(),
+            done: AtomicBool::new(false),
+        }
+    }
+
+    fn push(&self, item: T) {
+        let mut q = self.queue.lock().unwrap();
+        q.push(item);
+        self.condvar.notify_one();
+    }
+
+    fn push_many(&self, items: Vec<T>) {
+        if items.is_empty() {
+            return;
+        }
+        let mut q = self.queue.lock().unwrap();
+        q.extend(items);
+        self.condvar.notify_all();
+    }
+
+    fn pop(&self) -> Option<T> {
+        let mut q = self.queue.lock().unwrap();
+        loop {
+            if let Some(item) = q.pop() {
+                return Some(item);
             }
+            if self.done.load(Ordering::SeqCst) {
+                return None;
+            }
+            q = self.condvar.wait(q).unwrap();
+        }
+    }
+
+    fn signal_done(&self) {
+        self.done.store(true, Ordering::SeqCst);
+        self.condvar.notify_all();
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct DeferredDir {
+    path: PathBuf,
+    depth: usize,
+}
+
+impl Ord for DeferredDir {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.depth.cmp(&other.depth)
+    }
+}
+
+impl PartialOrd for DeferredDir {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+struct DeleteStats {
+    files_deleted: AtomicUsize,
+    dirs_deleted: AtomicUsize,
+    failures: AtomicUsize,
+}
+
+fn delete_fast(target: &Path, num_threads: usize, quiet: bool) -> i32 {
+    let queue: Arc<WorkQueue<(PathBuf, usize)>> = Arc::new(WorkQueue::new());
+    let deferred_dirs = Arc::new(Mutex::new(Vec::new()));
+    let stats = Arc::new(DeleteStats {
+        files_deleted: AtomicUsize::new(0),
+        dirs_deleted: AtomicUsize::new(0),
+        failures: AtomicUsize::new(0),
+    });
+    let pending_jobs = Arc::new(AtomicUsize::new(1));
+    let root: Arc<PathBuf> = Arc::new(target.to_path_buf());
+
+    let mut handles = Vec::with_capacity(num_threads);
+
+    for _ in 0..num_threads {
+        let queue = Arc::clone(&queue);
+        let deferred_dirs = Arc::clone(&deferred_dirs);
+        let stats = Arc::clone(&stats);
+        let pending_jobs = Arc::clone(&pending_jobs);
+        let root = Arc::clone(&root);
+        let quiet = quiet;
+
+        let handle = thread::spawn(move || {
+            while let Some((path, depth)) = queue.pop() {
+                process_directory(
+                    &path,
+                    depth,
+                    &queue,
+                    &deferred_dirs,
+                    &stats,
+                    &pending_jobs,
+                    &root,
+                    quiet,
+                );
+            }
+        });
+        handles.push(handle);
+    }
+
+    queue.push((target.to_path_buf(), 0usize));
+
+    let pending_clone = Arc::clone(&pending_jobs);
+    while pending_clone.load(Ordering::SeqCst) > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    queue.signal_done();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let mut deferred = deferred_dirs.lock().unwrap();
+    let mut heap = BinaryHeap::new();
+    for dir in deferred.drain(..) {
+        heap.push(dir);
+    }
+
+    while let Some(DeferredDir { path, .. }) = heap.pop() {
+        if let Err(e) = fs::remove_dir(&path) {
+            stats.failures.fetch_add(1, Ordering::Relaxed);
+            if !quiet {
+                eprintln!("Failed to remove dir {}: {}", path.display(), e);
+            }
+        } else {
+            stats.dirs_deleted.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    let failures = stats.failures.load(Ordering::Relaxed);
+    if !quiet {
+        let files = stats.files_deleted.load(Ordering::Relaxed);
+        let dirs = stats.dirs_deleted.load(Ordering::Relaxed);
+        eprintln!(
+            "Deleted {} files, {} directories ({} failures)",
+            files, dirs, failures
+        );
+    }
+
+    if failures > 0 {
+        EXIT_PARTIAL_FAILURE
+    } else {
+        EXIT_SUCCESS
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_directory(
+    path: &Path,
+    depth: usize,
+    queue: &WorkQueue<(PathBuf, usize)>,
+    deferred_dirs: &Mutex<Vec<DeferredDir>>,
+    stats: &DeleteStats,
+    pending_jobs: &AtomicUsize,
+    root: &Path,
+    quiet: bool,
+) {
+    let read_dir = match fs::read_dir(path) {
+        Ok(rd) => rd,
+        Err(e) => {
+            stats.failures.fetch_add(1, Ordering::Relaxed);
+            if !quiet {
+                eprintln!("Failed to read dir {}: {}", path.display(), e);
+            }
+            pending_jobs.fetch_sub(1, Ordering::SeqCst);
+            return;
+        }
+    };
+
+    let mut subdirs = Vec::new();
+    let mut has_files = false;
+
+    for entry in read_dir {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let entry_path = entry.path();
+        let metadata = match fs::symlink_metadata(&entry_path) {
+            Ok(m) => m,
+            Err(_) => continue,
         };
 
         if metadata.is_symlink() {
-            entries.push((path, false, depth));
+            if let Err(e) = fs::remove_file(&entry_path) {
+                stats.failures.fetch_add(1, Ordering::Relaxed);
+                if !quiet {
+                    eprintln!("Failed to remove symlink {}: {}", entry_path.display(), e);
+                }
+            } else {
+                stats.files_deleted.fetch_add(1, Ordering::Relaxed);
+            }
             continue;
         }
 
         if metadata.is_dir() {
-            let read_dir = match fs::read_dir(&path) {
-                Ok(rd) => rd,
-                Err(_) => {
-                    entries.push((path, true, depth));
-                    continue;
-                }
-            };
-
-            for entry in read_dir {
-                match entry {
-                    Ok(e) => stack.push((e.path(), depth + 1)),
-                    Err(_) => continue,
-                }
-            }
-            entries.push((path, true, depth));
+            subdirs.push((entry_path, depth + 1));
         } else {
-            entries.push((path, false, depth));
-        }
-    }
-
-    Ok(entries)
-}
-
-fn delete_entries_parallel(
-    entries: Vec<(PathBuf, bool, usize)>,
-    threads: usize,
-    use_trash: bool,
-    quiet: bool,
-) -> usize {
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build()
-        .unwrap();
-
-    let failures = AtomicUsize::new(0);
-
-    let files: Vec<_> = entries
-        .iter()
-        .filter(|(_, is_dir, _)| !is_dir)
-        .cloned()
-        .collect();
-
-    let progress = if quiet {
-        ProgressBar::hidden()
-    } else {
-        let pb = ProgressBar::new(files.len() as u64);
-        pb.set_style(
-            ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} files deleted ({eta})")
-                .unwrap()
-                .progress_chars("#>-"),
-        );
-        pb
-    };
-
-    pool.install(|| {
-        files.into_par_iter().for_each(|(path, _, _)| {
-            let result = if use_trash {
-                trash::delete(&path).map_err(io::Error::other)
+            has_files = true;
+            if let Err(e) = fs::remove_file(&entry_path) {
+                stats.failures.fetch_add(1, Ordering::Relaxed);
+                if !quiet {
+                    eprintln!("Failed to delete file {}: {}", entry_path.display(), e);
+                }
             } else {
-                fs::remove_file(&path)
-            };
-
-            if let Err(e) = result {
-                failures.fetch_add(1, Ordering::Relaxed);
-                if !quiet {
-                    eprintln!("Failed to delete file: {}: {}", path.display(), e);
-                }
-            }
-
-            progress.inc(1);
-        });
-    });
-
-    let dirs: Vec<_> = entries
-        .iter()
-        .filter(|(_, is_dir, _)| *is_dir)
-        .cloned()
-        .collect();
-
-    if !use_trash {
-        let mut max_depth = 0;
-        for (_, _, depth) in &dirs {
-            if *depth > max_depth {
-                max_depth = *depth;
+                stats.files_deleted.fetch_add(1, Ordering::Relaxed);
             }
         }
+    }
 
-        for depth in (0..=max_depth).rev() {
-            let dirs_at_depth: Vec<_> = dirs
-                .iter()
-                .filter(|(_, _, d)| *d == depth)
-                .map(|(p, _, _)| p.clone())
-                .collect();
+    let has_subdirs = !subdirs.is_empty();
+    if has_subdirs {
+        pending_jobs.fetch_add(subdirs.len(), Ordering::SeqCst);
+        queue.push_many(subdirs);
+    }
 
-            for dir in dirs_at_depth {
-                if !quiet {
-                    progress.set_message(format!("Removing dir: {}", dir.display()));
-                }
-                if fs::remove_dir(&dir).is_err() {
-                    failures.fetch_add(1, Ordering::Relaxed);
-                }
-            }
+    if path == &*root {
+        deferred_dirs.lock().unwrap().push(DeferredDir {
+            path: path.to_path_buf(),
+            depth,
+        });
+    } else if has_files || has_subdirs {
+        deferred_dirs.lock().unwrap().push(DeferredDir {
+            path: path.to_path_buf(),
+            depth,
+        });
+    } else if let Err(e) = fs::remove_dir(path) {
+        stats.failures.fetch_add(1, Ordering::Relaxed);
+        if !quiet {
+            eprintln!("Failed to remove dir {}: {}", path.display(), e);
         }
     } else {
-        let root_dirs: Vec<_> = dirs
-            .iter()
-            .filter(|(_, is_dir, _)| *is_dir)
-            .map(|(p, _, _)| p.clone())
-            .collect();
-
-        for dir in root_dirs {
-            if trash::delete(&dir).is_err() {
-                failures.fetch_add(1, Ordering::Relaxed);
-            }
-        }
+        stats.dirs_deleted.fetch_add(1, Ordering::Relaxed);
     }
 
-    if !quiet {
-        progress.finish();
-    }
-
-    failures.load(Ordering::Relaxed)
+    pending_jobs.fetch_sub(1, Ordering::SeqCst);
 }
 
 fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, force: bool) -> i32 {
@@ -220,7 +328,7 @@ fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, fo
 
     if is_protected_path(target) && !force {
         eprintln!(
-            "Error: Refusing to delete protected path '{}'. Use --force to override.",
+            "Error: Refusing to delete protected path '{}'. Use --Force to override.",
             target.display()
         );
         return EXIT_FATAL;
@@ -245,47 +353,14 @@ fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, fo
     }
 
     if !quiet {
-        eprintln!("Scanning '{}'...", target.display());
-    }
-
-    let entries = match collect_entries(target) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("Error scanning directory: {}", e);
-            return EXIT_FATAL;
-        }
-    };
-
-    if entries.is_empty() {
-        return EXIT_SUCCESS;
-    }
-
-    let file_count = entries.iter().filter(|(_, is_dir, _)| !is_dir).count();
-    let dir_count = entries.iter().filter(|(_, is_dir, _)| *is_dir).count();
-
-    if !quiet {
         eprintln!(
-            "Found {} files and {} directories in '{}'",
-            file_count,
-            dir_count,
-            target.display()
+            "Deleting '{}' with {} threads...",
+            target.display(),
+            threads
         );
     }
 
-    let failures = delete_entries_parallel(entries, threads, false, quiet);
-
-    if failures > 0 {
-        if !quiet {
-            eprintln!(
-                "'{}' completed with {} failure(s)",
-                target.display(),
-                failures
-            );
-        }
-        return EXIT_PARTIAL_FAILURE;
-    }
-
-    EXIT_SUCCESS
+    delete_fast(target, threads, quiet)
 }
 
 fn main() -> ! {
