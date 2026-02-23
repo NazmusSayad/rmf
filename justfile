@@ -33,6 +33,9 @@ docker-build:
 docker-test: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/run-tests.sh
 
+docker-bench-basic: docker-build
+    MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/benchmark/basic.sh
+
 docker-bench-rm: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/benchmark/rm.sh
 
