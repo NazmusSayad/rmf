@@ -2,8 +2,8 @@
 set -e
 
 TOTAL_FILES=${1:-100000}
-BASE_DIR=${2:-"/test/data"}
-DIR_COUNT=$(nproc)
+DIR_COUNT=${2:-100}
+BASE_DIR=${3:-"/test/data"}
 
 echo "Generating $TOTAL_FILES files across $DIR_COUNT directories..."
 

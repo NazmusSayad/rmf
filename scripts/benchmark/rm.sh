@@ -21,12 +21,12 @@ run_benchmark() {
 	echo ""
 
 	echo "--- rmf ---"
-	$SCRIPTS_DIR/generate-test-data.sh $files /test/bench_rmf
+	$SCRIPTS_DIR/generate-test-data.sh $files 100 /test/bench_rmf
 	/usr/bin/time -v rmf --quiet /test/bench_rmf 2>&1 | grep -E "(Elapsed|Maximum resident)"
 
 	echo ""
 	echo "--- rm -rf ---"
-	$SCRIPTS_DIR/generate-test-data.sh $files /test/bench_rm
+	$SCRIPTS_DIR/generate-test-data.sh $files 100 /test/bench_rm
 	/usr/bin/time -v rm -rf /test/bench_rm 2>&1 | grep -E "(Elapsed|Maximum resident)"
 	echo ""
 }

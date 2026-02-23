@@ -22,7 +22,7 @@ echo ""
 echo "--- Basic Functionality Tests ---"
 
 echo "Test 1: Delete small directory"
-$SCRIPTS_DIR/generate-test-data.sh 100 /test/t1
+$SCRIPTS_DIR/generate-test-data.sh 100 10 /test/t1
 rmf --quiet /test/t1
 if [ ! -d "/test/t1" ]; then
 	pass "Small directory deleted"
@@ -32,7 +32,7 @@ fi
 
 echo ""
 echo "Test 2: Delete medium directory"
-$SCRIPTS_DIR/generate-test-data.sh 5000 /test/t2
+$SCRIPTS_DIR/generate-test-data.sh 5000 100 /test/t2
 rmf --quiet /test/t2
 if [ ! -d "/test/t2" ]; then
 	pass "Medium directory deleted"
@@ -200,7 +200,7 @@ echo ""
 echo "--- Thread Configuration Tests ---"
 
 echo "Test 12: Custom thread count"
-$SCRIPTS_DIR/generate-test-data.sh 100 /test/t12
+$SCRIPTS_DIR/generate-test-data.sh 100 10 /test/t12
 output=$(rmf --threads 4 /test/t12 2>&1)
 if echo "$output" | grep -q "Using 4 thread"; then
 	pass "Custom thread count applied"
@@ -210,7 +210,7 @@ fi
 
 echo ""
 echo "Test 13: Thread count clamping (max 256)"
-$SCRIPTS_DIR/generate-test-data.sh 100 /test/t13
+$SCRIPTS_DIR/generate-test-data.sh 100 10 /test/t13
 output=$(rmf --threads 999 /test/t13 2>&1)
 if echo "$output" | grep -q "Using 256 thread"; then
 	pass "Thread count clamped to 256"
@@ -220,7 +220,7 @@ fi
 
 echo ""
 echo "Test 14: Thread count clamping (min 1)"
-$SCRIPTS_DIR/generate-test-data.sh 100 /test/t14
+$SCRIPTS_DIR/generate-test-data.sh 100 10 /test/t14
 output=$(rmf --threads 0 /test/t14 2>&1)
 if echo "$output" | grep -q "Using 1 thread"; then
 	pass "Thread count clamped to 1"
@@ -232,7 +232,7 @@ echo ""
 echo "--- Progress Output Tests ---"
 
 echo "Test 15: Progress output shown by default"
-$SCRIPTS_DIR/generate-test-data.sh 100 /test/t15
+$SCRIPTS_DIR/generate-test-data.sh 100 10 /test/t15
 output=$(rmf /test/t15 2>&1)
 if echo "$output" | grep -q "files deleted\|Using"; then
 	pass "Progress output shown"
@@ -242,7 +242,7 @@ fi
 
 echo ""
 echo "Test 16: Quiet mode suppresses output"
-$SCRIPTS_DIR/generate-test-data.sh 100 /test/t16
+$SCRIPTS_DIR/generate-test-data.sh 100 10 /test/t16
 output=$(rmf --quiet /test/t16 2>&1)
 if [ -z "$output" ]; then
 	pass "Quiet mode suppresses output"
@@ -430,7 +430,7 @@ echo ""
 echo "--- Large Scale Tests ---"
 
 echo "Test 31: Large directory (10000 files)"
-$SCRIPTS_DIR/generate-test-data.sh 10000 /test/t31
+$SCRIPTS_DIR/generate-test-data.sh 10000 100 /test/t31
 rmf --quiet /test/t31
 if [ ! -d "/test/t31" ]; then
 	pass "Large directory deleted"
@@ -633,7 +633,7 @@ echo ""
 echo "--- Thread Edge Cases ---"
 
 echo "Test 46: Single thread deletion"
-$SCRIPTS_DIR/generate-test-data.sh 500 /test/t46
+$SCRIPTS_DIR/generate-test-data.sh 500 10 /test/t46
 output=$(rmf --threads 1 /test/t46 2>&1)
 if [ ! -d "/test/t46" ] && echo "$output" | grep -q "Using 1 thread"; then
 	pass "Single thread deletion works"
@@ -643,7 +643,7 @@ fi
 
 echo ""
 echo "Test 47: Maximum thread count (256)"
-$SCRIPTS_DIR/generate-test-data.sh 500 /test/t47
+$SCRIPTS_DIR/generate-test-data.sh 500 10 /test/t47
 output=$(rmf --threads 300 /test/t47 2>&1)
 if [ ! -d "/test/t47" ] && echo "$output" | grep -q "Using 256 thread"; then
 	pass "Thread count clamped to 256"
