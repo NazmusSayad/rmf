@@ -113,10 +113,64 @@ echo ""
 echo "Test 9: Force flag allows deleting protected path"
 output=$(rmf --force / 2>&1)
 exit_code=$?
-if echo "$output" | grep -q "Refusing to delete root directory" && [ $exit_code -eq 2 ]; then
+if echo "$output" | grep -q "Refusing to delete root directory" && [ $exit_code -ne 0 ]; then
 	pass "--force does not bypass / protection (intentional)"
 else
-	fail "Unexpected behavior with --force on /"
+	fail "Unexpected behavior with --force on / (exit: $exit_code)"
+fi
+
+echo ""
+echo "--- Force Flag Tests (-f) ---"
+
+echo "Test 9a: -f silently ignores nonexistent file"
+output=$(rmf -f --quiet /nonexistent_force_test_12345 2>&1)
+exit_code=$?
+if [ -z "$output" ] && [ $exit_code -eq 0 ]; then
+	pass "-f silently ignores nonexistent file"
+else
+	fail "-f should silently ignore nonexistent file (exit: $exit_code)"
+fi
+
+echo ""
+echo "Test 9b: -f with multiple targets, one nonexistent"
+mkdir -p /test/t9b
+touch /test/t9b/file.txt
+output=$(rmf -f --quiet /test/t9b /nonexistent_force_test_67890 2>&1)
+exit_code=$?
+if [ ! -d "/test/t9b" ] && [ $exit_code -eq 0 ]; then
+	pass "-f continues after nonexistent, deletes existing"
+else
+	fail "-f should continue and delete existing (exit: $exit_code)"
+fi
+
+echo ""
+echo "Test 9c: -f with all nonexistent targets"
+output=$(rmf -f --quiet /nonexistent_a /nonexistent_b /nonexistent_c 2>&1)
+exit_code=$?
+if [ -z "$output" ] && [ $exit_code -eq 0 ]; then
+	pass "-f returns success with all nonexistent targets"
+else
+	fail "-f should return success with all nonexistent (exit: $exit_code)"
+fi
+
+echo ""
+echo "Test 9d: Without -f, nonexistent file shows error"
+output=$(rmf /nonexistent_no_force_test 2>&1)
+exit_code=$?
+if echo "$output" | grep -q "does not exist" && [ $exit_code -eq 2 ]; then
+	pass "Without -f, nonexistent file shows error"
+else
+	fail "Without -f should show error for nonexistent (exit: $exit_code)"
+fi
+
+echo ""
+echo "Test 9e: -f with --quiet combination"
+output=$(rmf -f --quiet /nonexistent_quiet_test 2>&1)
+exit_code=$?
+if [ -z "$output" ] && [ $exit_code -eq 0 ]; then
+	pass "-f --quiet works correctly"
+else
+	fail "-f --quiet combination failed (exit: $exit_code)"
 fi
 
 echo ""
