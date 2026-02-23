@@ -1,5 +1,4 @@
 use clap::Parser;
-use std::collections::BinaryHeap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -154,20 +153,20 @@ impl PartialOrd for DeferredDir {
     }
 }
 
-struct DeleteStats {
-    files_deleted: AtomicUsize,
-    dirs_deleted: AtomicUsize,
-    failures: AtomicUsize,
+#[derive(Default)]
+struct LocalStats {
+    files_deleted: usize,
+    dirs_deleted: usize,
+    failures: usize,
+}
+
+struct WorkerResult {
+    deferred_dirs: Vec<DeferredDir>,
+    stats: LocalStats,
 }
 
 fn delete_fast(target: &Path, num_threads: usize, quiet: bool) -> i32 {
     let queue: Arc<WorkQueue<(PathBuf, usize)>> = Arc::new(WorkQueue::new());
-    let deferred_dirs = Arc::new(Mutex::new(Vec::new()));
-    let stats = Arc::new(DeleteStats {
-        files_deleted: AtomicUsize::new(0),
-        dirs_deleted: AtomicUsize::new(0),
-        failures: AtomicUsize::new(0),
-    });
     let pending_jobs = Arc::new(AtomicUsize::new(1));
     let root: Arc<PathBuf> = Arc::new(target.to_path_buf());
 
@@ -175,23 +174,27 @@ fn delete_fast(target: &Path, num_threads: usize, quiet: bool) -> i32 {
 
     for _ in 0..num_threads {
         let queue = Arc::clone(&queue);
-        let deferred_dirs = Arc::clone(&deferred_dirs);
-        let stats = Arc::clone(&stats);
         let pending_jobs = Arc::clone(&pending_jobs);
         let root = Arc::clone(&root);
 
         let handle = thread::spawn(move || {
+            let mut deferred_dirs = Vec::new();
+            let mut stats = LocalStats::default();
             while let Some((path, depth)) = queue.pop() {
                 process_directory(
                     &path,
                     depth,
                     &queue,
-                    &deferred_dirs,
-                    &stats,
+                    &mut deferred_dirs,
+                    &mut stats,
                     &pending_jobs,
                     &root,
                     quiet,
                 );
+            }
+            WorkerResult {
+                deferred_dirs,
+                stats,
             }
         });
         handles.push(handle);
@@ -205,31 +208,34 @@ fn delete_fast(target: &Path, num_threads: usize, quiet: bool) -> i32 {
     }
     queue.signal_done();
 
+    let mut deferred = Vec::new();
+    let mut stats = LocalStats::default();
+
     for handle in handles {
-        handle.join().unwrap();
+        let result = handle.join().unwrap();
+        deferred.extend(result.deferred_dirs);
+        stats.files_deleted += result.stats.files_deleted;
+        stats.dirs_deleted += result.stats.dirs_deleted;
+        stats.failures += result.stats.failures;
     }
 
-    let mut deferred = deferred_dirs.lock().unwrap();
-    let mut heap = BinaryHeap::new();
-    for dir in deferred.drain(..) {
-        heap.push(dir);
-    }
+    deferred.sort_unstable_by(|a, b| b.depth.cmp(&a.depth));
 
-    while let Some(DeferredDir { path, .. }) = heap.pop() {
+    for DeferredDir { path, .. } in deferred {
         if let Err(e) = fs::remove_dir(&path) {
-            stats.failures.fetch_add(1, Ordering::Relaxed);
+            stats.failures += 1;
             if !quiet {
                 eprintln!("Failed to remove dir {}: {}", path.display(), e);
             }
         } else {
-            stats.dirs_deleted.fetch_add(1, Ordering::Relaxed);
+            stats.dirs_deleted += 1;
         }
     }
 
-    let failures = stats.failures.load(Ordering::Relaxed);
+    let failures = stats.failures;
     if !quiet {
-        let files = stats.files_deleted.load(Ordering::Relaxed);
-        let dirs = stats.dirs_deleted.load(Ordering::Relaxed);
+        let files = stats.files_deleted;
+        let dirs = stats.dirs_deleted;
         eprintln!(
             "{} files deleted, {} directories ({} failures)",
             files, dirs, failures
@@ -248,8 +254,8 @@ fn process_directory(
     path: &Path,
     depth: usize,
     queue: &WorkQueue<(PathBuf, usize)>,
-    deferred_dirs: &Mutex<Vec<DeferredDir>>,
-    stats: &DeleteStats,
+    deferred_dirs: &mut Vec<DeferredDir>,
+    stats: &mut LocalStats,
     pending_jobs: &AtomicUsize,
     root: &Path,
     quiet: bool,
@@ -257,7 +263,7 @@ fn process_directory(
     let read_dir = match fs::read_dir(path) {
         Ok(rd) => rd,
         Err(e) => {
-            stats.failures.fetch_add(1, Ordering::Relaxed);
+            stats.failures += 1;
             if !quiet {
                 eprintln!("Failed to read dir {}: {}", path.display(), e);
             }
@@ -267,7 +273,6 @@ fn process_directory(
     };
 
     let mut subdirs = Vec::new();
-    let mut has_files = false;
 
     for entry in read_dir {
         let entry = match entry {
@@ -275,35 +280,35 @@ fn process_directory(
             Err(_) => continue,
         };
 
-        let entry_path = entry.path();
-        let metadata = match fs::symlink_metadata(&entry_path) {
-            Ok(m) => m,
+        let entry_type = match entry.file_type() {
+            Ok(t) => t,
             Err(_) => continue,
         };
 
-        if metadata.is_symlink() {
+        let entry_path = entry.path();
+
+        if entry_type.is_symlink() {
             if let Err(e) = fs::remove_file(&entry_path) {
-                stats.failures.fetch_add(1, Ordering::Relaxed);
+                stats.failures += 1;
                 if !quiet {
                     eprintln!("Failed to remove symlink {}: {}", entry_path.display(), e);
                 }
             } else {
-                stats.files_deleted.fetch_add(1, Ordering::Relaxed);
+                stats.files_deleted += 1;
             }
             continue;
         }
 
-        if metadata.is_dir() {
+        if entry_type.is_dir() {
             subdirs.push((entry_path, depth + 1));
         } else {
-            has_files = true;
             if let Err(e) = fs::remove_file(&entry_path) {
-                stats.failures.fetch_add(1, Ordering::Relaxed);
+                stats.failures += 1;
                 if !quiet {
                     eprintln!("Failed to delete file {}: {}", entry_path.display(), e);
                 }
             } else {
-                stats.files_deleted.fetch_add(1, Ordering::Relaxed);
+                stats.files_deleted += 1;
             }
         }
     }
@@ -314,18 +319,18 @@ fn process_directory(
         queue.push_many(subdirs);
     }
 
-    if path == root || has_files || has_subdirs {
-        deferred_dirs.lock().unwrap().push(DeferredDir {
+    if path == root || has_subdirs {
+        deferred_dirs.push(DeferredDir {
             path: path.to_path_buf(),
             depth,
         });
     } else if let Err(e) = fs::remove_dir(path) {
-        stats.failures.fetch_add(1, Ordering::Relaxed);
+        stats.failures += 1;
         if !quiet {
             eprintln!("Failed to remove dir {}: {}", path.display(), e);
         }
     } else {
-        stats.dirs_deleted.fetch_add(1, Ordering::Relaxed);
+        stats.dirs_deleted += 1;
     }
 
     pending_jobs.fetch_sub(1, Ordering::SeqCst);
