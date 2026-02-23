@@ -1,19 +1,16 @@
 # rmf
 
-Fast parallel recursive file deletion tool.
-
-## Features
-
-- Multi-threaded deletion for improved performance on large directories
-- Safety guards against deleting protected paths (root, home directory)
-- Optional trash mode for safer deletion
-- Cross-platform support (Windows, Linux, macOS)
+Fast parallel recursive file deletion. A drop-in replacement for `rm -rf` that uses a thread pool to delete directory trees concurrently.
 
 ## Installation
 
+**From source** (requires Rust):
+
 ```bash
-just install
+cargo install --path .
 ```
+
+**Pre-built binaries** are available on the [Releases](https://github.com/NazmusSayad/rmf/releases) page for Linux (x86_64, aarch64, musl), macOS (x86_64, Apple Silicon), and Windows (x86_64, ARM64).
 
 ## Usage
 
@@ -21,54 +18,45 @@ just install
 rmf [OPTIONS] <TARGETS>...
 
 Arguments:
-  <TARGETS>  Target path(s) to delete
+  <TARGETS>              One or more paths to delete
 
 Options:
-  -f, --force         Override safety guards (allow deleting protected paths)
-      --threads <N>   Number of worker threads [default: CPU count]
-  -q, --quiet         Suppress non-error output
-      --trash         Move to trash instead of permanent delete
-  -h, --help          Print help
-  -V, --version       Print version
+  -f, --force            Override safety guards (allow deleting protected paths)
+      --threads <N>      Number of worker threads [default: number of logical CPUs]
+  -q, --quiet            Suppress all output except errors
+      --trash            Move to system trash instead of permanent deletion
+  -h, --help             Print help
+  -V, --version          Print version
 ```
 
 ## Examples
 
 ```bash
-# Delete a directory using all CPU cores
 rmf ./node_modules
 
-# Delete multiple paths with 8 threads
 rmf --threads 8 ./target ./build ./dist
 
-# Move to trash instead of deleting
 rmf --trash ./old-project
 
-# Quiet mode (only show errors)
 rmf -q ./large-directory
 ```
 
-## Development
+## Safety
 
-```bash
-# Build
-just build
+By default, `rmf` includes built-in safeguards:
 
-# Run tests
-just test
+- **Filesystem root** — Cannot be deleted (even with `--force`)
+- **Home directory** — Blocked by default; use `--force` to override
 
-# Lint
-just clippy
+These checks are performed after path canonicalization, preventing bypasses via symlinks or relative paths.
 
-# Format check
-just fmt
+## Exit Codes
 
-# Format fix
-just fmt-fix
-
-# Full check (fmt + clippy + test)
-just check
-```
+| Code | Meaning                                      |
+| ---- | -------------------------------------------- |
+| `0`  | All targets deleted successfully             |
+| `1`  | One or more files failed to delete           |
+| `2`  | Fatal error (protected path, path not found) |
 
 ## License
 
