@@ -333,8 +333,11 @@ fn process_directory(
 
 fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, force: bool) -> i32 {
     if !target.exists() {
-        eprintln!("Error: Path does not exist: {}", target.display());
-        return EXIT_FATAL;
+        if !force {
+            eprintln!("Error: Path does not exist: {}", target.display());
+            return EXIT_FATAL;
+        }
+        return EXIT_SUCCESS;
     }
 
     if is_force_protected_path(target) {
@@ -412,7 +415,13 @@ fn main() -> ! {
         let exit_code = delete_target(target, threads, args.trash, args.quiet, args.force);
         match exit_code {
             EXIT_ERROR => has_partial_failure = true,
-            EXIT_FATAL => has_fatal_error = true,
+            EXIT_FATAL => {
+                if args.force {
+                    has_partial_failure = true;
+                } else {
+                    has_fatal_error = true;
+                }
+            }
             _ => {}
         }
     }
