@@ -16,5 +16,3 @@ WORKDIR /test
 
 COPY scripts/ /scripts/
 RUN sed -i 's/\r$//' /scripts/*.sh && chmod +x /scripts/*.sh
-
-CMD ["/bin/bash", "/scripts/run-tests.sh"]
