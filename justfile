@@ -33,14 +33,14 @@ docker-build:
 docker-test: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/run-tests.sh
 
-docker-benchmark-rm: docker-build
+docker-bench-rm: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/benchmark/rm.sh
 
-docker-benchmark-real: docker-build
+docker-bench-real: docker-build
     MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/benchmark/real-projects.sh
 
-docker-benchmark-force: docker-build
-    MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/benchmark/force.sh
+docker-bench-force: docker-build
+    MSYS_NO_PATHCONV=1 docker run --rm {{docker_image}} bash //scripts/benchmark/flag-force.sh
 
 install: release
     cargo install --path .
