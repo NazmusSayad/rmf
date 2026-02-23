@@ -402,7 +402,13 @@ fn delete_target(target: &Path, threads: usize, use_trash: bool, quiet: bool, fo
 fn main() -> ! {
     let args = Args::parse();
 
-    let threads = args.threads.unwrap_or_else(num_cpus::get).clamp(1, 256);
+    let threads = args
+        .threads
+        .unwrap_or_else(|| {
+            let total = num_cpus::get();
+            ((total as f64 * 0.8).floor() as usize).max(1)
+        })
+        .clamp(1, 256);
 
     if !args.quiet {
         eprintln!("Using {} thread(s)", threads);
