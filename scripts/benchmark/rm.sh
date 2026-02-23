@@ -38,7 +38,6 @@ run_benchmark "Medium (10k files)" 10000 100
 run_benchmark "Large (50k files)" 50000 100
 run_benchmark "Very Large (100k files)" 100000 100
 run_benchmark "Extremely Large (1M files)" 1000000 1000
-run_benchmark "Extremely Large (10M files)" 10000000 1000
 
 echo "=============================================="
 echo "              Benchmark Complete"
