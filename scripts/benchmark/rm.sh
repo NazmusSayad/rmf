@@ -13,6 +13,7 @@ echo ""
 run_benchmark() {
 	local name=$1
 	local files=$2
+	local dir_count=$3
 
 	echo ""
 	echo "=========================================="
@@ -21,22 +22,23 @@ run_benchmark() {
 	echo ""
 
 	echo "--- rmf ---"
-	$SCRIPTS_DIR/generate-test-data.sh $files 100 /test/bench_rmf
+	$SCRIPTS_DIR/generate-test-data.sh $files $dir_count /test/bench_rmf
 	/usr/bin/time -v rmf --quiet /test/bench_rmf 2>&1 | grep -E "(Elapsed|Maximum resident)"
 
 	echo ""
 	echo "--- rm -rf ---"
-	$SCRIPTS_DIR/generate-test-data.sh $files 100 /test/bench_rm
+	$SCRIPTS_DIR/generate-test-data.sh $files $dir_count /test/bench_rm
 	/usr/bin/time -v rm -rf /test/bench_rm 2>&1 | grep -E "(Elapsed|Maximum resident)"
 	echo ""
 }
 
-run_benchmark "Tiny" 100
-run_benchmark "Small" 1000
-run_benchmark "Medium" 10000
-run_benchmark "Large" 50000
-run_benchmark "Very Large" 100000
-run_benchmark "Extremely Large" 1000000
+run_benchmark "Tiny (100 files)" 100 10
+run_benchmark "Small (1k files)" 1000 100
+run_benchmark "Medium (10k files)" 10000 100
+run_benchmark "Large (50k files)" 50000 100
+run_benchmark "Very Large (100k files)" 100000 100
+run_benchmark "Extremely Large (1M files)" 1000000 1000
+run_benchmark "Extremely Large (10M files)" 10000000 1000
 
 echo "=============================================="
 echo "              Benchmark Complete"
