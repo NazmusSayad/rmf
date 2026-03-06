@@ -8,6 +8,13 @@ echo "CPUs: $(nproc)"
 echo "Memory: $(free -h | grep Mem | awk '{print $2}')"
 echo ""
 
+echo "Checking for pnpm..."
+if ! command -v pnpm &>/dev/null; then
+	echo "pnpm not found. Installing..."
+	npm install -g pnpm
+fi
+echo ""
+
 PROJECTS=(
 	"webpack/webpack"
 	"facebook/react"
@@ -34,7 +41,7 @@ run_project_benchmark() {
 	cd "$work_dir"
 
 	echo "Installing dependencies..."
-	npm install --silent --force 2>/dev/null || npm install --silent 2>/dev/null || npm install 2>/dev/null
+	pnpm install --silent --force 2>/dev/null || pnpm install --silent 2>/dev/null || pnpm install 2>/dev/null
 
 	local file_count=$(find node_modules -type f 2>/dev/null | wc -l)
 	local dir_count=$(find node_modules -type d 2>/dev/null | wc -l)
@@ -45,7 +52,7 @@ run_project_benchmark() {
 	/usr/bin/time -v rmf --quiet "$work_dir/node_modules" 2>&1 | grep -E "(Elapsed|Maximum resident)"
 
 	echo "Reinstalling dependencies..."
-	npm install --silent --force 2>/dev/null || npm install --silent 2>/dev/null || npm install 2>/dev/null
+	pnpm install --silent --force 2>/dev/null || pnpm install --silent 2>/dev/null || pnpm install 2>/dev/null
 
 	echo ""
 	echo "--- rm -rf ---"
